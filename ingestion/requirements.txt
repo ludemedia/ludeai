@@ -1,0 +1,4 @@
+asyncpg
+tweepy
+google-cloud-aiplatform
+google-cloud-bigquery
