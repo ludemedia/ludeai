@@ -11,9 +11,10 @@ Archive tweets from multiple Twitter accounts and provide a clean semantic searc
 | Layer | Technology |
 |---|---|
 | Tweet Ingestion | Twitter API v2 + Cloud Scheduler + Cloud Run Job |
-| Raw Storage | Firestore (tweets + metadata) |
+| Primary Database | AlloyDB (PostgreSQL + pgvector) |
+| Analytics Warehouse | BigQuery |
 | Embeddings | Vertex AI Text Embeddings (`text-embedding-004`) |
-| Vector Search | Vertex AI Vector Search |
+| Vector Search | AlloyDB pgvector (ANN) + BigQuery Vector Search |
 | Backend API | Cloud Run (Python / FastAPI) |
 | Frontend | Next.js → Firebase Hosting |
 
@@ -30,15 +31,18 @@ Cloud Scheduler (cron, e.g. every 6h)
      ▼
 Cloud Run Job — Ingestion Service
   - Fetch new tweets for each tracked account
-  - Store raw tweet in Firestore
-  - Generate embedding via Vertex AI
-  - Upsert embedding into Vertex AI Vector Search
+  - Deduplicate by tweet_id
+  - Generate embedding via Vertex AI text-embedding-004
      │
-     ├──▶ Firestore
-     │      tweets/{tweet_id}: { text, author, created_at, url, ... }
+     ├──▶ AlloyDB (primary store)
+     │      table: tweets
+     │        id, author, text, url, created_at,
+     │        embedding vector(768)   ← pgvector column
      │
-     └──▶ Vertex AI Vector Search Index
-            { id: tweet_id, embedding: [...] }
+     └──▶ BigQuery (analytics + backup vector search)
+            dataset: twitter_archive
+            table: tweets  (streaming insert or batch load)
+            VECTOR column on embedding for BQ Vector Search
 
 User
   │
@@ -49,11 +53,42 @@ Next.js Frontend (Firebase Hosting)
      │
      ▼
 Cloud Run — Search API (FastAPI)
-  1. Embed the query via Vertex AI
-  2. Query Vector Search → top-K tweet IDs
-  3. Fetch tweet docs from Firestore by IDs
-  4. Return results to frontend
+  1. Embed query via Vertex AI
+  2. AlloyDB pgvector ANN query → top-K results
+     (fallback: BigQuery VECTOR_SEARCH for analytics queries)
+  3. Return tweets to frontend
 ```
+
+---
+
+## Database Design
+
+### AlloyDB — Primary Operational DB
+
+PostgreSQL-compatible, supports pgvector natively with HNSW/IVFFlat indexing.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE tweets (
+  id            TEXT PRIMARY KEY,
+  author        TEXT NOT NULL,
+  author_id     TEXT NOT NULL,
+  text          TEXT NOT NULL,
+  url           TEXT,
+  created_at    TIMESTAMPTZ NOT NULL,
+  embedding     vector(768),           -- Vertex AI text-embedding-004
+  ingested_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX ON tweets USING hnsw (embedding vector_cosine_ops);
+```
+
+### BigQuery — Analytics & Backup
+
+- Receives all tweets via streaming insert from the ingestion job
+- Supports `VECTOR_SEARCH()` for ad-hoc semantic queries across full history
+- Can run analytics: tweet volume by account, time series, etc.
 
 ---
 
@@ -61,31 +96,31 @@ Cloud Run — Search API (FastAPI)
 
 ### 1. Ingestion Service (`/ingestion`)
 - Cloud Run Job, triggered by Cloud Scheduler
-- Twitter API v2: fetch timeline for each account, handle pagination & deduplication
-- Calls Vertex AI Embeddings API to embed each tweet's text
-- Writes to Firestore + upserts to Vector Search index
+- Twitter API v2: fetch timeline per account, paginate, deduplicate
+- Embed tweet text via Vertex AI Embeddings API
+- Write to AlloyDB + BigQuery streaming insert
 
 ### 2. Search API (`/api`)
 - FastAPI on Cloud Run, public HTTPS endpoint
-- `POST /search` — accepts `{ query: string, limit: int }`
-- Embeds query → Vector Search ANN query → Firestore batch get → return tweets
+- `POST /search` — `{ query: string, limit: int, author?: string }`
+- Embed query → AlloyDB pgvector cosine similarity search → return tweets
 
 ### 3. Frontend (`/web`)
 - Next.js, minimal UI: search bar + results list
-- Shows tweet text, author, date, link to original tweet
-- Deployed to Firebase Hosting
+- Filter by account (optional)
+- Shows tweet text, author, date, link to original
 
 ---
 
 ## GCP Services Used
 
+- **AlloyDB** — primary tweet store + pgvector semantic search
+- **BigQuery** — analytics warehouse + Vector Search for historical queries
+- **Vertex AI Embeddings** — `text-embedding-004` (768 dimensions)
 - **Cloud Run** — ingestion job + search API
 - **Cloud Scheduler** — periodic ingestion trigger
-- **Firestore** — tweet document store
-- **Vertex AI Embeddings** — `text-embedding-004`
-- **Vertex AI Vector Search** — ANN index for semantic search
-- **Firebase Hosting** — frontend hosting
-- **Secret Manager** — Twitter API keys
+- **Firebase Hosting** — Next.js frontend
+- **Secret Manager** — Twitter API keys, AlloyDB credentials
 
 ---
 
@@ -93,11 +128,12 @@ Cloud Run — Search API (FastAPI)
 
 ```
 ludeai/
-├── ingestion/        # Cloud Run Job: fetch tweets + embed + store
+├── ingestion/        # Cloud Run Job: fetch → embed → write to AlloyDB + BQ
 ├── api/              # Cloud Run: FastAPI search endpoint
 ├── web/              # Next.js frontend
-├── infra/            # Terraform for GCP resources
-└── ARCHITECTURE.md
+├── infra/            # Terraform: AlloyDB, BQ dataset, Cloud Run, Scheduler
+└── docs/
+    └── ARCHITECTURE.md
 ```
 
 ---
