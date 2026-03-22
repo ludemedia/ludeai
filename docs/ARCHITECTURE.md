@@ -128,12 +128,36 @@ CREATE INDEX ON tweets USING hnsw (embedding vector_cosine_ops);
 
 ```
 ludeai/
-├── ingestion/        # Cloud Run Job: fetch → embed → write to AlloyDB + BQ
-├── api/              # Cloud Run: FastAPI search endpoint
-├── web/              # Next.js frontend
-├── infra/            # Terraform: AlloyDB, BQ dataset, Cloud Run, Scheduler
+├── ingestion/              # Cloud Run Job: fetch → embed → write to AlloyDB + BQ
+│   ├── main.py
+│   ├── twitter_client.py
+│   ├── embedder.py
+│   ├── db.py
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── api/                    # Cloud Run: FastAPI search endpoint
+│   ├── main.py
+│   ├── search.py
+│   ├── db.py
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── web/                    # Next.js frontend
+│   ├── app/
+│   ├── components/
+│   ├── package.json
+│   └── next.config.js
+│
+├── infra/                  # Terraform for all GCP resources
+│   ├── alloydb/            # AlloyDB cluster, instance, schema
+│   ├── bigquery/           # BQ dataset + table definitions
+│   ├── cloudrun/           # Cloud Run service definitions
+│   └── scheduler/          # Cloud Scheduler jobs
+│
 └── docs/
-    └── ARCHITECTURE.md
+    ├── ARCHITECTURE.md
+    └── DB_ARCHITECTURE.md
 ```
 
 ---
