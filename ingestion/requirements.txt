@@ -1,4 +1,8 @@
-asyncpg
-tweepy
-google-cloud-aiplatform
-google-cloud-bigquery
+tweepy>=4.14
+asyncpg>=0.29
+httpx>=0.27
+google-cloud-alloydb-connector[asyncpg]>=1.0
+google-cloud-aiplatform>=1.40
+google-cloud-storage>=2.14
+google-cloud-bigquery>=3.17
+vertexai>=1.40

@@ -6,4 +6,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "main.py"]
+# Cloud Run Job passes args via CLOUD_RUN_TASK_* env vars,
+# but we also support direct CLI args for local testing.
+ENTRYPOINT ["python", "main.py"]
