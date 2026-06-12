@@ -9,6 +9,7 @@ Requires:
     gcloud auth application-default login
 """
 import asyncio
+import os
 import asyncpg
 from google.cloud.alloydb.connector import AsyncConnector
 
@@ -107,10 +108,26 @@ CREATE TABLE IF NOT EXISTS ingestion_runs (
 
 
 async def main():
-    connector = AsyncConnector()
+    # If ALLOYDB_PROXY=1 (local dev with Auth Proxy running on localhost:5432),
+    # connect directly via asyncpg. Otherwise use the AlloyDB Connector.
+    use_proxy = os.environ.get("ALLOYDB_PROXY", "0") == "1"
 
-    async def getconn():
-        return await connector.connect(
+    if use_proxy:
+        print("Connecting via AlloyDB Auth Proxy (localhost:5432)...")
+        conn = await asyncpg.connect(
+            host="127.0.0.1",
+            port=5432,
+            user="postgres",
+            password=os.environ.get("ALLOYDB_PASSWORD", "LudeAI2026!Secure"),
+            database=DB_NAME,
+            timeout=30,
+            ssl=False,
+        )
+        connector = None
+    else:
+        print("Connecting via AlloyDB Connector (direct)...")
+        connector = AsyncConnector()
+        conn = await connector.connect(
             INSTANCE_URI,
             "asyncpg",
             user=DB_USER,
@@ -118,18 +135,17 @@ async def main():
             enable_iam_auth=True,
         )
 
-    pool = await asyncpg.create_pool(dsn=None, connect=getconn, min_size=1, max_size=1)
-    async with pool.acquire() as conn:
-        await conn.execute(SCHEMA)
-        tables = await conn.fetch(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
-        )
-        print("Tables created:")
-        for t in tables:
-            print(f"  ✓ {t['tablename']}")
+    await conn.execute(SCHEMA)
+    tables = await conn.fetch(
+        "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
+    )
+    print("Tables created:")
+    for t in tables:
+        print(f"  ✓ {t['tablename']}")
 
-    await pool.close()
-    await connector.close()
+    await conn.close()
+    if connector:
+        await connector.close()
 
 
 if __name__ == "__main__":

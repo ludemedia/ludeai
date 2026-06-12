@@ -1,0 +1,13 @@
+# DB setup
+asyncpg
+google-cloud-alloydb-connector[asyncpg]
+
+# YouTube download
+yt-dlp
+
+# Transcription (Apple Silicon) + Chinese punctuation restoration
+mlx-whisper
+funasr
+torch
+torchaudio
+# system dependency: ffmpeg  (brew install ffmpeg)
