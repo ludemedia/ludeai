@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Local tooling
+.claude/
+
+# Large media — videos/audio/transcripts are generated locally, not tracked.
+# A couple of sample files are force-added (see git log).
+data/
