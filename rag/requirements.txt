@@ -2,3 +2,4 @@
 mlx-lm                 # Qwen 生成（M4 GPU 加速）
 sentence-transformers  # 中文检索向量（bge-small-zh）
 numpy
+gradio                 # 网页 UI（rag/app.py）
