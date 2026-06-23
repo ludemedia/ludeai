@@ -12,3 +12,6 @@ __pycache__/
 # Large media — videos/audio/transcripts are generated locally, not tracked.
 # A couple of sample files are force-added (see git log).
 data/
+
+# Generated RAG index (rebuild with rag/build_index.py)
+rag/index/
